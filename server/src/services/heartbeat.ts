@@ -148,9 +148,9 @@ const PAPERCLIP_HARNESS_CHECKOUT_KEY = "paperclipHarnessCheckedOut";
 const DETACHED_PROCESS_ERROR_CODE = "process_detached";
 const REPO_ONLY_CWD_SENTINEL = "/__paperclip_repo_only__";
 const MANAGED_WORKSPACE_GIT_CLONE_TIMEOUT_MS = 10 * 60 * 1000;
-const MAX_INLINE_WAKE_COMMENTS = 8;
-const MAX_INLINE_WAKE_COMMENT_BODY_CHARS = 4_000;
-const MAX_INLINE_WAKE_COMMENT_BODY_TOTAL_CHARS = 12_000;
+const MAX_INLINE_WAKE_COMMENTS = 3;
+const MAX_INLINE_WAKE_COMMENT_BODY_CHARS = 1_500;
+const MAX_INLINE_WAKE_COMMENT_BODY_TOTAL_CHARS = 4_000;
 const execFile = promisify(execFileCallback);
 const EXECUTION_PATH_HEARTBEAT_RUN_STATUSES = ["queued", "running", "scheduled_retry"] as const;
 const CANCELLABLE_HEARTBEAT_RUN_STATUSES = ["queued", "running", "scheduled_retry"] as const;
@@ -1743,10 +1743,12 @@ async function buildPaperclipWakePayload(input: {
       : null,
     commentIds,
     latestCommentId: commentIds[commentIds.length - 1] ?? null,
-    comments,
+    // When a fallback fetch is needed, omit partial comment bodies — the agent
+    // fetches the complete set in one API call instead of using truncated inline data.
+    comments: truncated || missingCommentCount > 0 ? [] : comments,
     commentWindow: {
       requestedCount: commentIds.length,
-      includedCount: comments.length,
+      includedCount: truncated || missingCommentCount > 0 ? 0 : comments.length,
       missingCount: missingCommentCount,
     },
     truncated,
@@ -4854,6 +4856,11 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     } else {
       delete context[PAPERCLIP_WAKE_PAYLOAD_KEY];
     }
+    const wakeCommentCoveredByPayload =
+      paperclipWakePayload !== null &&
+      wakeCommentContext !== null &&
+      Array.isArray(paperclipWakePayload.comments) &&
+      paperclipWakePayload.comments.some((c) => c.id === wakeCommentContext.id);
     const taskMarkdown = buildPaperclipTaskMarkdown({
       issue: issueRef
         ? {
@@ -4863,23 +4870,10 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
             description: issueRef.description,
           }
         : null,
-      wakeComment: wakeCommentContext,
+      wakeComment: wakeCommentCoveredByPayload ? null : wakeCommentContext,
     });
-    if (issueRef) {
-      context.paperclipIssue = {
-        id: issueRef.id,
-        identifier: issueRef.identifier,
-        title: issueRef.title,
-        description: issueRef.description,
-      };
-    } else {
-      delete context.paperclipIssue;
-    }
-    if (wakeCommentContext) {
-      context.paperclipWakeComment = wakeCommentContext;
-    } else {
-      delete context.paperclipWakeComment;
-    }
+    delete context.paperclipIssue;
+    delete context.paperclipWakeComment;
     if (taskMarkdown) {
       context.paperclipTaskMarkdown = taskMarkdown;
     } else {
@@ -4943,9 +4937,14 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       runScopedMentionedSkillKeys,
     );
     const runtimeSkillEntries = await companySkills.listRuntimeSkillEntries(agent.companyId);
+    const skillSyncPreference = readPaperclipSkillSyncPreference(effectiveResolvedConfig);
+    const filteredSkillEntries = skillSyncPreference.explicit
+      ? runtimeSkillEntries.filter((e) => !!e.required || skillSyncPreference.desiredSkills.includes(e.key))
+      : runtimeSkillEntries.filter((e) => !!e.required);
     let runtimeConfig = {
       ...effectiveResolvedConfig,
-      paperclipRuntimeSkills: runtimeSkillEntries,
+      paperclipRuntimeSkills: filteredSkillEntries,
+      paperclipAvailableSkillKeys: runtimeSkillEntries.map((e) => e.key),
     };
     const workspaceOperationRecorder = workspaceOperationsSvc.createRecorder({
       companyId: agent.companyId,
