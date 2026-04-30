@@ -148,6 +148,7 @@ const PAPERCLIP_HARNESS_CHECKOUT_KEY = "paperclipHarnessCheckedOut";
 const DETACHED_PROCESS_ERROR_CODE = "process_detached";
 const REPO_ONLY_CWD_SENTINEL = "/__paperclip_repo_only__";
 const MANAGED_WORKSPACE_GIT_CLONE_TIMEOUT_MS = 10 * 60 * 1000;
+const MAX_PROCESS_LOSS_RETRIES = 3;
 const MAX_INLINE_WAKE_COMMENTS = 3;
 const MAX_INLINE_WAKE_COMMENT_BODY_CHARS = 1_500;
 const MAX_INLINE_WAKE_COMMENT_BODY_TOTAL_CHARS = 4_000;
@@ -4426,11 +4427,15 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         });
       }
 
-      const shouldRetry = tracksLocalChild && (!!run.processPid || !!run.processGroupId) && (run.processLossRetryCount ?? 0) < 1;
+      const processLossRetryCount = run.processLossRetryCount ?? 0;
+      const shouldRetry = tracksLocalChild && (!!run.processPid || !!run.processGroupId) && processLossRetryCount < MAX_PROCESS_LOSS_RETRIES;
       const baseMessage = buildProcessLossMessage(run, descendantOnlyCleanup ? { descendantOnly: true } : undefined);
+      const retryMessage = shouldRetry
+        ? `${baseMessage}; retrying (attempt ${processLossRetryCount + 1} of ${MAX_PROCESS_LOSS_RETRIES})`
+        : baseMessage;
 
       let finalizedRun = await setRunStatus(run.id, "failed", {
-        error: shouldRetry ? `${baseMessage}; retrying once` : baseMessage,
+        error: retryMessage,
         errorCode: "process_lost",
         finishedAt: now,
         resultJson: mergeRunStopMetadataForAgent(
@@ -4439,7 +4444,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           {
             resultJson: parseObject(run.resultJson),
             errorCode: "process_lost",
-            errorMessage: shouldRetry ? `${baseMessage}; retrying once` : baseMessage,
+            errorMessage: retryMessage,
           },
         ),
       });
@@ -5853,7 +5858,10 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           // The inner catch did not fire, so we must record the failure here.
           const message = outerErr instanceof Error ? outerErr.message : "Unknown setup failure";
           logger.error({ err: outerErr, runId }, "heartbeat execution setup failed");
-          const setupFailureAgent = await getAgent(run.agentId).catch(() => null);
+          const setupFailureAgent = await getAgent(run.agentId).catch((err) => {
+            logger.warn({ err, runId }, "setup failure handler: failed to fetch agent");
+            return null;
+          });
           await setRunStatus(runId, "failed", {
             error: message,
             errorCode: "adapter_failed",
@@ -5864,12 +5872,19 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
                 errorMessage: message,
               }),
             } : {}),
-          }).catch(() => undefined);
+          }).catch((err) => {
+            logger.warn({ err, runId }, "setup failure handler: failed to mark run as failed — run may remain stuck in running state");
+          });
           await setWakeupStatus(run.wakeupRequestId, "failed", {
             finishedAt: new Date(),
             error: message,
-          }).catch(() => undefined);
-          const failedRun = await getRun(runId).catch(() => null);
+          }).catch((err) => {
+            logger.warn({ err, runId }, "setup failure handler: failed to mark wakeup as failed");
+          });
+          const failedRun = await getRun(runId).catch((err) => {
+            logger.warn({ err, runId }, "setup failure handler: failed to fetch run for recovery — issue may remain execution-locked");
+            return null;
+          });
           if (failedRun) {
             // Emit a run-log event so the failure is visible in the run timeline,
             // consistent with what the inner catch block does for adapter failures.
@@ -5878,20 +5893,39 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
               stream: "system",
               level: "error",
               message,
-            }).catch(() => undefined);
-            const livenessRun = await classifyAndPersistRunLiveness(failedRun).catch(() => failedRun);
-            const failedAgent = setupFailureAgent ?? await getAgent(run.agentId).catch(() => null);
+            }).catch((err) => {
+              logger.warn({ err, runId }, "setup failure handler: failed to append run error event");
+            });
+            const livenessRun = await classifyAndPersistRunLiveness(failedRun).catch((err) => {
+              logger.warn({ err, runId }, "setup failure handler: failed to classify run liveness");
+              return failedRun;
+            });
+            const failedAgent = setupFailureAgent ?? await getAgent(run.agentId).catch((err) => {
+              logger.warn({ err, runId }, "setup failure handler: failed to fetch agent for finalization");
+              return null;
+            });
             if (failedAgent) {
-              await refreshContinuationSummaryForRun(livenessRun, failedAgent).catch(() => undefined);
-              await finalizeIssueCommentPolicy(livenessRun, failedAgent).catch(() => undefined);
+              await refreshContinuationSummaryForRun(livenessRun, failedAgent).catch((err) => {
+                logger.warn({ err, runId }, "setup failure handler: failed to refresh continuation summary");
+              });
+              await finalizeIssueCommentPolicy(livenessRun, failedAgent).catch((err) => {
+                logger.warn({ err, runId }, "setup failure handler: failed to finalize issue comment policy");
+              });
             }
-            await releaseIssueExecutionAndPromote(livenessRun).catch(() => undefined);
+            await releaseIssueExecutionAndPromote(livenessRun).catch((err) => {
+              logger.warn({ err, runId }, "setup failure handler: failed to release issue execution — issue may remain execution-locked");
+            });
           }
           // Ensure the agent is not left stuck in "running" if the inner catch handler's
           // DB calls threw (e.g. a transient DB error in finalizeAgentStatus).
-          await finalizeAgentStatus(run.agentId, "failed").catch(() => undefined);
+          await finalizeAgentStatus(run.agentId, "failed").catch((err) => {
+            logger.warn({ err, runId }, "setup failure handler: failed to finalize agent status — agent may remain stuck in running state");
+          });
         } finally {
-          const latestRun = await getRun(run.id).catch(() => null);
+          const latestRun = await getRun(run.id).catch((err) => {
+            logger.warn({ err, runId: run.id }, "finally block: failed to fetch latest run for lease release");
+            return null;
+          });
           const releaseResult = await envOrchestrator.releaseForRun({
             heartbeatRunId: run.id,
             companyId: run.companyId,
@@ -5908,7 +5942,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
               "failed to release environment lease for heartbeat run",
             );
           }
-          await releaseRuntimeServicesForRun(run.id).catch(() => undefined);
+          await releaseRuntimeServicesForRun(run.id).catch((err) => {
+            logger.warn({ err, runId: run.id }, "finally block: failed to release runtime services — resources may leak");
+          });
           activeRunExecutions.delete(run.id);
           await startNextQueuedRunForAgent(run.agentId);
         }
@@ -5939,12 +5975,14 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     const contextIssueId = readNonEmptyString(runContext.issueId);
     const taskKey = deriveTaskKeyWithHeartbeatFallback(runContext, null);
     const recoveryAgent = await getAgent(run.agentId);
-    const recoveryAgentInvokable =
+    // Paused agents cannot start new runs but are not permanently blocked —
+    // in-progress issues are released (not escalated) so they can resume when unpaused.
+    const recoveryAgentCanStartNewRuns =
       recoveryAgent &&
       recoveryAgent.status !== "paused" &&
       recoveryAgent.status !== "terminated" &&
       recoveryAgent.status !== "pending_approval";
-    const recoverySessionBefore = recoveryAgentInvokable
+    const recoverySessionBefore = recoveryAgentCanStartNewRuns
       ? await resolveSessionBeforeForWakeup(recoveryAgent, taskKey)
       : null;
     const recoveryAgentNameKey = normalizeAgentNameKey(recoveryAgent?.name);
@@ -6009,10 +6047,20 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           .where(eq(agents.id, deferred.agentId))
           .then((rows) => rows[0] ?? null);
 
+        if (!deferredAgent || deferredAgent.companyId !== issue.companyId) {
+          await tx
+            .update(agentWakeupRequests)
+            .set({
+              status: "failed",
+              finishedAt: new Date(),
+              error: "Deferred wake could not be promoted: agent not found",
+              updatedAt: new Date(),
+            })
+            .where(eq(agentWakeupRequests.id, deferred.id));
+          continue;
+        }
+
         if (
-          !deferredAgent ||
-          deferredAgent.companyId !== issue.companyId ||
-          deferredAgent.status === "paused" ||
           deferredAgent.status === "terminated" ||
           deferredAgent.status === "pending_approval"
         ) {
@@ -6025,6 +6073,12 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
               updatedAt: new Date(),
             })
             .where(eq(agentWakeupRequests.id, deferred.id));
+          continue;
+        }
+
+        // Paused agent: leave the deferred wake pending so it can be promoted
+        // when the agent is unpaused, rather than permanently failing it.
+        if (deferredAgent.status === "paused") {
           continue;
         }
 
@@ -6221,9 +6275,16 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         return { kind: "released" as const };
       }
 
+      // Paused agent: release the issue lock without escalation so the issue can
+      // be resumed naturally when the agent is unpaused. Only terminated agents
+      // trigger immediate blocking.
+      if (recoveryAgent?.status === "paused") {
+        return { kind: "released" as const };
+      }
+
       const shouldBlockImmediately =
         issue.originKind === RECOVERY_ORIGIN_KINDS.strandedIssueRecovery ||
-        !recoveryAgentInvokable ||
+        !recoveryAgentCanStartNewRuns ||
         !recoveryAgent ||
         didAutomaticRecoveryFail(run, issue.status === "todo" ? "assignment_recovery" : "issue_continuation_needed");
       if (shouldBlockImmediately) {
@@ -6231,10 +6292,18 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           status: issue.status as "todo" | "in_progress",
           latestRun: run,
         });
+        // Set status to "blocked" inside the transaction so a concurrent heartbeat
+        // tick that acquires the FOR UPDATE lock after this commit will see
+        // status !== "todo"|"in_progress", skip issueNeedsImmediateRecovery, and
+        // return "released" — preventing duplicate escalation and duplicate comments.
+        await tx
+          .update(issues)
+          .set({ status: "blocked", updatedAt: new Date() })
+          .where(eq(issues.id, issue.id));
         return {
           kind: "blocked" as const,
           issue,
-          previousStatus: issue.status,
+          previousStatus: issue.status, // captured before the update above
           comment,
         };
       }
