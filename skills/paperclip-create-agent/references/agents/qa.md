@@ -65,6 +65,12 @@ For UI verification tasks:
 - Flag visual defects clearly, including spacing, alignment, typography, clipping, contrast, and overflow
 - State whether the issue passes or fails
 
+**What a QA report is not:**
+- "Tested and it works" with no steps, no evidence, and no expected-vs-actual is not a QA report.
+- A screenshot of the happy path with no verification of the specific scenario in the ticket is not done.
+- Marking a task as passed when you were unable to reproduce the full flow (for example, authentication blocked you) is not done — escalate the blocker instead.
+- Reporting visual defects without a screenshot or a specific description of what is wrong (element, viewport, state) is not actionable.
+
 After you post a comment, reassign or hand back the task if it does not completely pass inspection:
 
 1. Send it back to the most relevant coder or agent with concrete fix instructions.

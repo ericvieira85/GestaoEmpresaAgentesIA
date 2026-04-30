@@ -175,9 +175,20 @@ export function agentRoutes(
     };
   }
 
-  function canCreateAgents(agent: { role: string; permissions: Record<string, unknown> | null | undefined }) {
+  function agentPermissionFlag(
+    agent: { permissions: Record<string, unknown> | null | undefined },
+    flag: "canCreateAgents" | "canManageAgents" | "canApproveIssues",
+  ): boolean {
     if (!agent.permissions || typeof agent.permissions !== "object") return false;
-    return Boolean((agent.permissions as Record<string, unknown>).canCreateAgents);
+    return Boolean((agent.permissions as Record<string, unknown>)[flag]);
+  }
+
+  function canCreateAgents(agent: { role: string; permissions: Record<string, unknown> | null | undefined }) {
+    return agentPermissionFlag(agent, "canCreateAgents");
+  }
+
+  function canManageAgents(agent: { role: string; permissions: Record<string, unknown> | null | undefined }) {
+    return agentPermissionFlag(agent, "canManageAgents");
   }
 
   async function buildAgentAccessState(agent: NonNullable<Awaited<ReturnType<typeof svc.getById>>>) {
@@ -398,6 +409,7 @@ export function agentRoutes(
 
     if (actorAgent.id === targetAgent.id) return;
     if (actorAgent.role === "ceo") return;
+    if (canManageAgents(actorAgent)) return;
     const allowedByGrant = await access.hasPermission(
       targetAgent.companyId,
       "agent",
@@ -405,7 +417,7 @@ export function agentRoutes(
       "agents:create",
     );
     if (allowedByGrant || canCreateAgents(actorAgent)) return;
-    throw forbidden("Only CEO or agent creators can modify other agents");
+    throw forbidden("Only CEO or agents with canManageAgents permission can modify other agents");
   }
 
   async function assertCanReadAgent(req: Request, targetAgent: { companyId: string }) {
@@ -1800,7 +1812,10 @@ export function agentRoutes(
     }
 
     const effectiveCanAssignTasks =
-      agent.role === "ceo" || Boolean(agent.permissions?.canCreateAgents) || req.body.canAssignTasks;
+      agent.role === "ceo" ||
+      Boolean(agent.permissions?.canCreateAgents) ||
+      Boolean(agent.permissions?.canManageAgents) ||
+      req.body.canAssignTasks;
     await access.ensureMembership(agent.companyId, "agent", agent.id, "member", "active");
     await access.setPrincipalPermission(
       agent.companyId,
@@ -1823,6 +1838,8 @@ export function agentRoutes(
       entityId: agent.id,
       details: {
         canCreateAgents: agent.permissions?.canCreateAgents ?? false,
+        canManageAgents: agent.permissions?.canManageAgents ?? false,
+        canApproveIssues: agent.permissions?.canApproveIssues ?? false,
         canAssignTasks: effectiveCanAssignTasks,
       },
     });

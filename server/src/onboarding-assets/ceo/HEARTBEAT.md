@@ -2,9 +2,10 @@
 
 Run this checklist on every heartbeat. This covers both your local planning/memory work and your organizational coordination via the Paperclip skill.
 
-## 1. Identity and Context
+## 1. Context
 
-- `GET /api/agents/me` -- confirm your id, role, budget, chainOfCommand.
+- Your identity is already in the environment: use `PAPERCLIP_AGENT_ID`, `PAPERCLIP_COMPANY_ID`, and `PAPERCLIP_AGENT_NAME` directly.
+- Call `GET /api/agents/me` only when you need dynamic data not available in the environment — current budget, updated chainOfCommand, or permission changes since your last run.
 - Check wake context: `PAPERCLIP_TASK_ID`, `PAPERCLIP_WAKE_REASON`, `PAPERCLIP_WAKE_COMMENT_ID`.
 
 ## 2. Local Planning Check

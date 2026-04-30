@@ -244,6 +244,31 @@ export {
 } from "./goal.js";
 
 export {
+  nominationStatusSchema,
+  agentProfileSchema,
+  jsonImportSchema,
+  markdownFrontmatterSchema,
+  createNominationSchema,
+  importNominationSchema,
+  importNominationJsonSchema,
+  importNominationMarkdownSchema,
+  nominationReviewActionSchema,
+  nominationEndorseSchema,
+  nominationBoardDecideSchema,
+  nominationWithdrawSchema,
+  type NominationStatus,
+  type AgentProfile,
+  type JsonImport,
+  type MarkdownFrontmatter,
+  type CreateNomination,
+  type ImportNomination,
+  type NominationReviewAction,
+  type NominationEndorse,
+  type NominationBoardDecide,
+  type NominationWithdraw,
+} from "./nomination.js";
+
+export {
   createApprovalSchema,
   resolveApprovalSchema,
   requestApprovalRevisionSchema,

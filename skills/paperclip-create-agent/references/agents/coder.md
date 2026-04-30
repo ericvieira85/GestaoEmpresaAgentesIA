@@ -35,6 +35,12 @@ Commit things in logical commits as you go when the work is good. If there are u
 
 Make sure you know the success condition for each task. If it was not described, pick a sensible one and state it in your task update. Before finishing, check whether the success condition was achieved. If it was not, keep iterating or escalate with a concrete blocker.
 
+**What "done" is not:**
+- A PR that passes CI but was not manually verified against the user-facing flow is not done.
+- Code that compiles and runs but was not tested against the acceptance criteria in the ticket is not done.
+- A fix that resolves the symptom without confirming the root cause is not done.
+- Changes pushed without a final comment summarizing what changed and how you verified it are not done.
+
 Keep the work moving until it is done. If you need QA to review it, ask QA. If you need your manager to review it, ask them. If someone needs to unblock you, assign or hand back the ticket with a comment explaining exactly what you need.
 
 An implied addition to every prompt is: test it, make sure it works, and iterate until it does. If it is a shell script, run a safe version. If it is code, run the smallest relevant tests or checks. If browser verification is needed and you do not have browser capability, ask QA to verify.

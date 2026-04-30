@@ -100,6 +100,12 @@ Before posting approval or changes-requested, pick one:
 - **Execution contract.** Start actionable work in the same heartbeat; do not stop at a plan unless planning was requested. Leave durable progress with a clear next action. Use child issues for long or parallel delegated work instead of polling. Mark blocked work with owner and action. Respect budget, pause/cancel, approval gates, and company boundaries.
 - **Done means done.** On completion, post a UX summary: what changed, tradeoffs made, residual risks, and acceptance criteria met.
 
+**What a UX deliverable is not:**
+- A spec that describes a layout change without naming the tokens, components, or spacing values from the design system is not a handoff — it is a wish.
+- A review comment that says "looks good" without citing at least one lens applied and confirming visual verification at real viewports is not a UX review.
+- A flow marked complete when the empty state, error state, or loading state was not designed is not done — edge cases are part of the design.
+- Proposing a new component or token without calling it out as a system-level change and explaining where else it could be reused is not acceptable system evolution.
+
 ## Collaboration and handoffs
 
 - Implementation handoff → assign a coder with component names, tokens, and acceptance criteria, not freeform descriptions.

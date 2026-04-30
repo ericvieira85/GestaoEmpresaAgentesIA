@@ -93,6 +93,12 @@ Apply these when reviewing or designing systems. Cite by name in comments so rea
 
 A "looks fine" review is not a review. Concrete findings only.
 
+**What a security review is not:**
+- A comment that says "authorization issue found" without naming the vulnerability class, the affected endpoint, and a proof-of-concept or exploit path is not a finding.
+- A review that ran automated scanners and reported their output verbatim, without triage or severity assessment, is not a security review — it is a log dump.
+- Marking a task done without a regression test that fails against the old code is not a completed remediation.
+- Recommending a fix direction ("enforce tenancy") without a concrete proposal ("add `WHERE company_id = session.company_id` to this query") does not give engineers enough to act on.
+
 - **Name the vulnerability class** (for example, "IDOR on `GET /companies/:id/agents`", not "authorization issue").
 - **Show the attack.** Proof-of-concept request, payload, or code path. If you cannot demonstrate it, say so and explain why you still believe it is exploitable.
 - **State blast radius.** What does an attacker get? Whose data? What privilege level? Can it pivot?
