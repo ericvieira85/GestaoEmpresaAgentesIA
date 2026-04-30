@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { and, asc, desc, eq, getTableColumns, gt, inArray, isNull, lte, notInArray, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
@@ -4866,23 +4866,37 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       wakeCommentContext !== null &&
       Array.isArray(paperclipWakePayload.comments) &&
       paperclipWakePayload.comments.some((c) => c.id === wakeCommentContext.id);
-    const taskMarkdown = buildPaperclipTaskMarkdown({
-      issue: issueRef
-        ? {
-            id: issueRef.id,
-            identifier: issueRef.identifier,
-            title: issueRef.title,
-            description: issueRef.description,
-          }
-        : null,
-      wakeComment: wakeCommentCoveredByPayload ? null : wakeCommentContext,
-    });
+    const effectiveWakeCommentForMarkdown = wakeCommentCoveredByPayload ? null : wakeCommentContext;
+    const taskMarkdownFingerprint = createHash("sha1")
+      .update(JSON.stringify([
+        issueRef?.id ?? null,
+        issueRef?.title ?? null,
+        issueRef?.description ?? null,
+        effectiveWakeCommentForMarkdown?.id ?? null,
+      ]))
+      .digest("hex")
+      .slice(0, 16);
     delete context.paperclipIssue;
     delete context.paperclipWakeComment;
-    if (taskMarkdown) {
-      context.paperclipTaskMarkdown = taskMarkdown;
-    } else {
-      delete context.paperclipTaskMarkdown;
+    if (context.paperclipTaskMarkdownFingerprint !== taskMarkdownFingerprint) {
+      const taskMarkdown = buildPaperclipTaskMarkdown({
+        issue: issueRef
+          ? {
+              id: issueRef.id,
+              identifier: issueRef.identifier,
+              title: issueRef.title,
+              description: issueRef.description,
+            }
+          : null,
+        wakeComment: effectiveWakeCommentForMarkdown,
+      });
+      if (taskMarkdown) {
+        context.paperclipTaskMarkdown = taskMarkdown;
+        context.paperclipTaskMarkdownFingerprint = taskMarkdownFingerprint;
+      } else {
+        delete context.paperclipTaskMarkdown;
+        delete context.paperclipTaskMarkdownFingerprint;
+      }
     }
     const existingExecutionWorkspace =
       issueRef?.executionWorkspaceId ? await executionWorkspacesSvc.getById(issueRef.executionWorkspaceId) : null;
@@ -4947,8 +4961,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       : runtimeSkillEntries.filter((e) => !!e.required);
     let runtimeConfig = {
       ...effectiveResolvedConfig,
-      paperclipRuntimeSkills: filteredSkillEntries,
-      paperclipAvailableSkillKeys: runtimeSkillEntries.map((e) => e.key),
+      paperclipRuntimeSkills: filteredSkillEntries.map(({ key, runtimeName, required }) => ({ key, runtimeName, required })),
     };
     const workspaceOperationRecorder = workspaceOperationsSvc.createRecorder({
       companyId: agent.companyId,
@@ -5225,7 +5238,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         return home;
       })(),
     };
-    context.paperclipWorkspaces = resolvedWorkspace.workspaceHints;
+    context.paperclipWorkspaces = resolvedWorkspace.workspaceId
+      ? resolvedWorkspace.workspaceHints.filter((h) => h.workspaceId === resolvedWorkspace.workspaceId)
+      : resolvedWorkspace.workspaceHints;
     const runtimeServiceIntents = (() => {
       const runtimeConfig = parseObject(resolvedConfig.workspaceRuntime);
       return Array.isArray(runtimeConfig.services)

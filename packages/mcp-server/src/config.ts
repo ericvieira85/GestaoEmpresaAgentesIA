@@ -4,6 +4,10 @@ export interface PaperclipMcpConfig {
   companyId: string | null;
   agentId: string | null;
   runId: string | null;
+  /** Agent role (e.g. "engineer", "ceo"). Used for role-based tool filtering when allowedTools is not set explicitly. */
+  agentRole: string | null;
+  /** Explicit tool allowlist (comma-separated in env). Overrides role-based defaults when set. */
+  allowedTools: string[] | null;
 }
 
 function nonEmpty(value: string | undefined): string | null {
@@ -29,11 +33,18 @@ export function readConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Papercl
     throw new Error("Missing PAPERCLIP_API_KEY");
   }
 
+  const allowedToolsRaw = nonEmpty(env.PAPERCLIP_ALLOWED_TOOLS);
+  const allowedTools = allowedToolsRaw
+    ? allowedToolsRaw.split(",").map((s) => s.trim()).filter(Boolean)
+    : null;
+
   return {
     apiUrl: normalizeApiUrl(apiUrl),
     apiKey,
     companyId: nonEmpty(env.PAPERCLIP_COMPANY_ID),
     agentId: nonEmpty(env.PAPERCLIP_AGENT_ID),
     runId: nonEmpty(env.PAPERCLIP_RUN_ID),
+    agentRole: nonEmpty(env.PAPERCLIP_AGENT_ROLE),
+    allowedTools,
   };
 }

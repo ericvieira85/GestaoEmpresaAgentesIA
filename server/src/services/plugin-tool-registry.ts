@@ -401,14 +401,9 @@ export function createPluginToolRegistry(
         );
       }
 
-      // 4. Verify the plugin worker is running (use DB UUID for worker lookup)
+      // 4. Ensure plugin worker is running — starts it on first tool call if lazy-registered
       const dbId = tool.pluginDbId;
-      if (!workerManager.isRunning(dbId)) {
-        throw new Error(
-          `Cannot execute tool "${namespacedName}" — ` +
-          `worker for plugin "${pluginId}" is not running.`,
-        );
-      }
+      await workerManager.ensureWorkerRunning(dbId);
 
       // 5. Dispatch the executeTool RPC call to the worker
       log.debug(

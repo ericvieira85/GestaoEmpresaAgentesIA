@@ -151,6 +151,10 @@ type RuntimeSkillEntryOptions = {
 
 const skillInventoryRefreshPromises = new Map<string, Promise<void>>();
 
+const RUNTIME_SKILL_ENTRIES_TTL_MS = 30_000;
+type RuntimeSkillEntriesCache = { entries: PaperclipSkillEntry[]; cachedAt: number };
+const runtimeSkillEntriesCache = new Map<string, RuntimeSkillEntriesCache>();
+
 function selectCompanySkillColumns() {
   return {
     id: companySkills.id,
@@ -1599,6 +1603,7 @@ export function companySkillService(db: Db) {
         .delete(companySkills)
         .where(eq(companySkills.id, skill.id));
       await fs.rm(resolveRuntimeSkillMaterializedPath(companyId, skill), { recursive: true, force: true });
+      runtimeSkillEntriesCache.delete(companyId);
     }
   }
 
@@ -2167,6 +2172,11 @@ export function companySkillService(db: Db) {
     companyId: string,
     options: RuntimeSkillEntryOptions = {},
   ): Promise<PaperclipSkillEntry[]> {
+    const cached = runtimeSkillEntriesCache.get(companyId);
+    if (cached && Date.now() - cached.cachedAt < RUNTIME_SKILL_ENTRIES_TTL_MS) {
+      return cached.entries;
+    }
+
     const skills = await listFull(companyId);
 
     const entries = await Promise.all(
@@ -2193,9 +2203,12 @@ export function companySkillService(db: Db) {
       }),
     );
 
-    return entries
+    const result = entries
       .filter((e): e is NonNullable<typeof e> => e !== null)
       .sort((left, right) => left.key.localeCompare(right.key));
+
+    runtimeSkillEntriesCache.set(companyId, { entries: result, cachedAt: Date.now() });
+    return result;
   }
 
   async function importPackageFiles(
@@ -2374,6 +2387,7 @@ export function companySkillService(db: Db) {
       if (!row) throw notFound("Failed to persist company skill");
       out.push(toCompanySkill(row));
     }
+    runtimeSkillEntriesCache.delete(companyId);
     return out;
   }
 

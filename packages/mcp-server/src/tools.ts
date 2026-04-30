@@ -15,6 +15,118 @@ import {
 import { PaperclipApiClient } from "./client.js";
 import { formatErrorResponse, formatTextResponse } from "./format.js";
 
+/**
+ * Role-based tool allowlists.
+ * Each role gets a curated subset of tools. "general" gets all tools.
+ * Roles not listed here fall back to the "general" allowlist.
+ */
+const CORE_TOOLS = new Set([
+  "paperclipMe",
+  "paperclipInboxLite",
+  "paperclipListIssues",
+  "paperclipGetIssue",
+  "paperclipGetHeartbeatContext",
+  "paperclipListComments",
+  "paperclipGetComment",
+  "paperclipAddComment",
+  "paperclipCheckoutIssue",
+  "paperclipReleaseIssue",
+  "paperclipListDocuments",
+  "paperclipGetDocument",
+  "paperclipApiRequest",
+]);
+
+const ROLE_TOOL_ALLOWLISTS: Record<string, Set<string>> = {
+  engineer: new Set([
+    ...CORE_TOOLS,
+    "paperclipUpsertIssueDocument",
+    "paperclipListDocumentRevisions",
+    "paperclipRestoreIssueDocumentRevision",
+    "paperclipGetIssueWorkspaceRuntime",
+    "paperclipControlIssueWorkspaceServices",
+    "paperclipWaitForIssueWorkspaceService",
+    "paperclipUpdateIssue",
+    "paperclipCreateIssue",
+    "paperclipSuggestTasks",
+    "paperclipAskUserQuestions",
+    "paperclipRequestConfirmation",
+    "paperclipListAgents",
+    "paperclipGetAgent",
+    "paperclipListProjects",
+    "paperclipGetProject",
+    "paperclipListGoals",
+    "paperclipGetGoal",
+  ]),
+  devops: new Set([
+    ...CORE_TOOLS,
+    "paperclipGetIssueWorkspaceRuntime",
+    "paperclipControlIssueWorkspaceServices",
+    "paperclipWaitForIssueWorkspaceService",
+    "paperclipUpdateIssue",
+    "paperclipCreateIssue",
+    "paperclipSuggestTasks",
+    "paperclipAskUserQuestions",
+    "paperclipRequestConfirmation",
+    "paperclipListAgents",
+    "paperclipGetAgent",
+  ]),
+  security: new Set([
+    ...CORE_TOOLS,
+    "paperclipListApprovals",
+    "paperclipCreateApproval",
+    "paperclipGetApproval",
+    "paperclipApprovalDecision",
+    "paperclipListApprovalComments",
+    "paperclipAddApprovalComment",
+    "paperclipListIssueApprovals",
+    "paperclipLinkIssueApproval",
+    "paperclipUnlinkIssueApproval",
+    "paperclipGetApprovalIssues",
+    "paperclipUpdateIssue",
+    "paperclipAskUserQuestions",
+    "paperclipRequestConfirmation",
+  ]),
+  qa: new Set([
+    ...CORE_TOOLS,
+    "paperclipUpsertIssueDocument",
+    "paperclipListDocumentRevisions",
+    "paperclipUpdateIssue",
+    "paperclipCreateIssue",
+    "paperclipSuggestTasks",
+    "paperclipAskUserQuestions",
+    "paperclipRequestConfirmation",
+  ]),
+  pm: new Set([
+    ...CORE_TOOLS,
+    "paperclipListAgents",
+    "paperclipGetAgent",
+    "paperclipListProjects",
+    "paperclipGetProject",
+    "paperclipListGoals",
+    "paperclipGetGoal",
+    "paperclipUpdateIssue",
+    "paperclipCreateIssue",
+    "paperclipSuggestTasks",
+    "paperclipAskUserQuestions",
+    "paperclipRequestConfirmation",
+    "paperclipUpsertIssueDocument",
+    "paperclipListDocumentRevisions",
+    "paperclipListApprovals",
+    "paperclipGetApproval",
+    "paperclipListIssueApprovals",
+  ]),
+};
+
+/**
+ * Returns the set of allowed tool names for a given agent role.
+ * Returns null (no filter — all tools allowed) for "general", "ceo", "cto", "cmo", "cfo"
+ * and any unrecognised role.
+ */
+export function getToolsForRole(role: string | null | undefined): Set<string> | null {
+  if (!role) return null;
+  return ROLE_TOOL_ALLOWLISTS[role] ?? null;
+}
+
 export interface ToolDefinition {
   name: string;
   description: string;

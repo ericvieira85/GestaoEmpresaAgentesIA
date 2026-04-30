@@ -1755,12 +1755,12 @@ export function pluginLoader(
         workerOptions.execArgv = ["--import", DEV_TSX_LOADER_PATH];
       }
 
-      await workerManager.startWorker(pluginId, workerOptions);
+      workerManager.registerWorkerLazy(pluginId, workerOptions);
       registered.worker = true;
 
       log.info(
         { pluginId, pluginKey },
-        "plugin-loader: worker started",
+        "plugin-loader: worker registered for lazy startup",
       );
 
       // ------------------------------------------------------------------

@@ -58,8 +58,6 @@ export interface AgentToolDescriptor {
   displayName: string;
   /** Description for the agent — explains when and how to use this tool. */
   description: string;
-  /** JSON Schema describing the tool's input parameters. */
-  parametersSchema: Record<string, unknown>;
   /** The plugin that provides this tool. */
   pluginId: string;
 }
@@ -118,6 +116,15 @@ export interface PluginToolDispatcher {
    * @returns Array of agent tool descriptors
    */
   listToolsForAgent(filter?: ToolListFilter): AgentToolDescriptor[];
+
+  /**
+   * Return the JSON Schema for a single tool's input parameters.
+   * Fetched on-demand rather than included in every listing response.
+   *
+   * @param namespacedName - e.g. `"acme.linear:search-issues"`
+   * @returns The parameters schema, or `null` if the tool is not found
+   */
+  getToolSchema(namespacedName: string): Record<string, unknown> | null;
 
   /**
    * Look up a tool by its namespaced name.
@@ -277,7 +284,6 @@ export function createPluginToolDispatcher(
       name: tool.namespacedName,
       displayName: tool.displayName,
       description: tool.description,
-      parametersSchema: tool.parametersSchema,
       pluginId: tool.pluginDbId,
     };
   }
@@ -387,6 +393,10 @@ export function createPluginToolDispatcher(
 
     listToolsForAgent(filter?: ToolListFilter): AgentToolDescriptor[] {
       return registry.listTools(filter).map(toAgentDescriptor);
+    },
+
+    getToolSchema(namespacedName: string): Record<string, unknown> | null {
+      return registry.getTool(namespacedName)?.parametersSchema ?? null;
     },
 
     getTool(namespacedName: string): RegisteredTool | null {

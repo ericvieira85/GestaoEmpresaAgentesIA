@@ -741,6 +741,33 @@ export function pluginRoutes(
   });
 
   /**
+   * GET /api/plugins/tools/:namespacedName/schema
+   *
+   * Return the JSON Schema for a single tool's input parameters.
+   * Fetched on-demand so the listing endpoint stays lightweight.
+   *
+   * Response: `{ parametersSchema: Record<string, unknown> }`
+   * Errors: 404 if tool not found, 501 if tool dispatch not enabled
+   */
+  router.get("/plugins/tools/:namespacedName/schema", async (req, res) => {
+    assertBoardOrgAccess(req);
+
+    if (!toolDeps) {
+      res.status(501).json({ error: "Plugin tool dispatch is not enabled" });
+      return;
+    }
+
+    const { namespacedName } = req.params;
+    const schema = toolDeps.toolDispatcher.getToolSchema(namespacedName);
+    if (!schema) {
+      res.status(404).json({ error: "Tool not found" });
+      return;
+    }
+
+    res.json({ parametersSchema: schema });
+  });
+
+  /**
    * POST /api/plugins/tools/execute
    *
    * Execute a plugin-contributed tool by its namespaced name.

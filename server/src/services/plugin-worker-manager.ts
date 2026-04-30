@@ -310,6 +310,23 @@ export interface PluginWorkerManager {
   startWorker(pluginId: string, options: WorkerStartOptions): Promise<PluginWorkerHandle>;
 
   /**
+   * Register a worker for lazy startup — stores options without spawning the process.
+   * The process is started on the first `ensureWorkerRunning()` or `call()` invocation.
+   *
+   * @throws if a worker is already registered or lazy-registered for this plugin
+   */
+  registerWorkerLazy(pluginId: string, options: WorkerStartOptions): void;
+
+  /**
+   * Ensure the worker process is running, starting it if it was lazy-registered.
+   * No-op if the worker is already running. Concurrent calls are serialised by
+   * the existing startup lock so only one spawn happens.
+   *
+   * @throws if the plugin has no registration (eager or lazy)
+   */
+  ensureWorkerRunning(pluginId: string): Promise<void>;
+
+  /**
    * Stop and unregister a specific plugin worker.
    */
   stopWorker(pluginId: string): Promise<void>;
@@ -1225,6 +1242,8 @@ export function createPluginWorkerManager(
   const workers = new Map<string, PluginWorkerHandle>();
   /** Per-plugin startup locks to prevent concurrent spawn races. */
   const startupLocks = new Map<string, Promise<PluginWorkerHandle>>();
+  /** Options stored for lazy-registered plugins that have not yet spawned. */
+  const lazyOptions = new Map<string, WorkerStartOptions>();
 
   return {
     async startWorker(
@@ -1283,7 +1302,49 @@ export function createPluginWorkerManager(
       return startPromise;
     },
 
+    registerWorkerLazy(pluginId: string, options: WorkerStartOptions): void {
+      if (workers.has(pluginId)) {
+        throw new Error(`Worker already registered (eager) for plugin "${pluginId}"`);
+      }
+      if (lazyOptions.has(pluginId)) {
+        throw new Error(`Worker already registered (lazy) for plugin "${pluginId}"`);
+      }
+      lazyOptions.set(pluginId, options);
+      log.debug({ pluginId }, "plugin worker registered for lazy startup");
+    },
+
+    async ensureWorkerRunning(pluginId: string): Promise<void> {
+      // Already running — nothing to do.
+      const existing = workers.get(pluginId);
+      if (existing && existing.status === "running") return;
+
+      // In-flight startup — wait for it.
+      const inFlight = startupLocks.get(pluginId);
+      if (inFlight) {
+        await inFlight;
+        return;
+      }
+
+      // Lazy-registered — start now.
+      const opts = lazyOptions.get(pluginId);
+      if (!opts) {
+        throw new Error(
+          `No worker registered for plugin "${pluginId}" — cannot ensure running`,
+        );
+      }
+
+      log.info({ pluginId }, "plugin worker lazy startup triggered by first tool call");
+      lazyOptions.delete(pluginId);
+      await this.startWorker(pluginId, opts);
+    },
+
     async stopWorker(pluginId: string): Promise<void> {
+      // Clear lazy registration if plugin never actually spawned.
+      if (lazyOptions.delete(pluginId)) {
+        log.debug({ pluginId }, "plugin worker lazy registration cleared (never started)");
+        return;
+      }
+
       const handle = workers.get(pluginId);
       if (!handle) {
         log.warn({ pluginId }, "no worker registered for plugin, nothing to stop");
@@ -1321,6 +1382,7 @@ export function createPluginWorkerManager(
       });
       await Promise.all(promises);
       workers.clear();
+      lazyOptions.clear();
     },
 
     diagnostics(): WorkerDiagnostics[] {
