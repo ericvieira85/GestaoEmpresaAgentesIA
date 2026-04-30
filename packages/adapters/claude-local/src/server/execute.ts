@@ -48,6 +48,7 @@ import {
 import { resolveClaudeDesiredSkillNames } from "./skills.js";
 import { isBedrockModelId } from "./models.js";
 import { prepareClaudePromptBundle } from "./prompt-cache.js";
+import { ensureAgentContextModeConfig } from "./context-mode.js";
 import { defaultModel } from "../index.js";
 
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -68,6 +69,7 @@ interface ClaudeRuntimeConfig {
   workspaceId: string | null;
   workspaceRepoUrl: string | null;
   workspaceRepoRef: string | null;
+  contextModeDbPath: string | null;
   env: Record<string, string>;
   loggedEnv: Record<string, string>;
   timeoutSec: number;
@@ -231,6 +233,12 @@ async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<Cl
     env.PAPERCLIP_API_KEY = authToken;
   }
 
+  const contextModeDbPath = agentHome ? path.join(agentHome, ".context-mode", "context.db") : null;
+  if (agentHome && !hasNonEmptyEnvValue(env, "CLAUDE_CONFIG_DIR")) {
+    await ensureAgentContextModeConfig(agentHome);
+    env.CLAUDE_CONFIG_DIR = path.join(agentHome, ".claude");
+  }
+
   const runtimeEnv = ensurePathInEnv({ ...process.env, ...env });
   await ensureAdapterExecutionTargetCommandResolvable(command, executionTarget, cwd, runtimeEnv);
   const resolvedCommand = await resolveAdapterExecutionTargetCommandForLogs(command, executionTarget, cwd, runtimeEnv);
@@ -255,6 +263,7 @@ async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<Cl
     workspaceId,
     workspaceRepoUrl,
     workspaceRepoRef,
+    contextModeDbPath,
     env,
     loggedEnv,
     timeoutSec,
@@ -334,6 +343,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     workspaceId,
     workspaceRepoUrl,
     workspaceRepoRef,
+    contextModeDbPath,
     env,
     loggedEnv,
     timeoutSec,
@@ -687,6 +697,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         ...(workspaceId ? { workspaceId } : {}),
         ...(workspaceRepoUrl ? { repoUrl: workspaceRepoUrl } : {}),
         ...(workspaceRepoRef ? { repoRef: workspaceRepoRef } : {}),
+        ...(contextModeDbPath ? { contextModeDbPath } : {}),
       } as Record<string, unknown>)
       : null;
     const clearSessionForMaxTurns = isClaudeMaxTurnsResult(parsed);

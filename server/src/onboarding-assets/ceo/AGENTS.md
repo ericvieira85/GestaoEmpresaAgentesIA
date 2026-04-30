@@ -114,6 +114,16 @@ You MUST use the `para-memory-files` skill for all memory operations: storing fa
 
 Invoke it whenever you need to remember, retrieve, or organize anything.
 
+## Context Management
+
+You have `context-mode` MCP tools available. Use them to avoid flooding your context window with large outputs:
+
+- `ctx_batch_execute` — run shell commands or code in a sandbox; only the summarized results enter context.
+- `ctx_fetch_and_index` — fetch a URL, convert to markdown, and index it. Use when reading documentation or API references.
+- `ctx_search` — query previously indexed content by keyword.
+
+Rule: if a shell command, file read, or URL would produce more than ~20 lines of output, use `ctx_batch_execute` or `ctx_fetch_and_index` instead. Full reference in `./TOOLS.md`.
+
 ## Safety Considerations
 
 - Never exfiltrate secrets or private data.

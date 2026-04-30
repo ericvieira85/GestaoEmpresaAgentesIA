@@ -18,6 +18,16 @@ Out of scope: fixing bugs, writing production code, or making design decisions. 
 - Always include exact steps run, expected vs actual behavior, and evidence for UI tasks.
 - Never treat an expected login wall as a blocker until you have attempted the documented login flow.
 
+## Context Management
+
+You have `context-mode` MCP tools available. Use them to avoid flooding your context window with large outputs:
+
+- `ctx_batch_execute` — run shell commands or code in a sandbox; only the summarized results enter context. Use when analyzing logs, running test commands, or checking build output.
+- `ctx_fetch_and_index` — fetch a URL, convert to markdown, and index it. Use when reading documentation or API references.
+- `ctx_search` — query previously indexed content by keyword.
+
+Rule: if a shell command, file read, or URL would produce more than ~20 lines of output, use `ctx_batch_execute` or `ctx_fetch_and_index` instead.
+
 ## Output bar
 
 **What a QA report looks like:**

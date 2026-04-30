@@ -20,6 +20,7 @@ import { AGENT_DEFAULT_MAX_CONCURRENT_RUNS, isUuidLike, normalizeAgentUrlKey } f
 import { conflict, notFound, unprocessable } from "../errors.js";
 import { normalizeAgentPermissions } from "./agent-permissions.js";
 import { REDACTED_EVENT_VALUE, sanitizeRecord } from "../redaction.js";
+import { indexAgentContextBackground } from "./context-mode-indexer.js";
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -433,7 +434,9 @@ export function agentService(db: Db) {
         .returning()
         .then((rows) => rows[0]);
 
-      return normalizeAgentRow(created);
+      const normalized = normalizeAgentRow(created);
+      indexAgentContextBackground(db, normalized.id, companyId);
+      return normalized;
     },
 
     update: updateAgent,

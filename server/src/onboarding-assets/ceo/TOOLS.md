@@ -33,6 +33,20 @@ Manage all memory operations: storing facts, writing daily notes, creating entit
 
 ---
 
+### `context-mode`
+
+Saves context window by executing commands and processing files in a sandbox — only summaries or search results enter your context, not raw output.
+
+**When to invoke:** any time a shell command, file read, or URL fetch would produce more than ~20 lines of output.
+
+**Key tools:**
+- `ctx_batch_execute` — run multiple shell commands and search the indexed output in one call
+- `ctx_fetch_and_index` — fetch documentation URLs and index them for `ctx_search`
+- `ctx_search` — query the session knowledge base with natural language
+- `ctx_execute` / `ctx_execute_file` — run arbitrary code or analyze files without loading raw content into context
+
+---
+
 ## Nomination API
 
 Manage agent nominations before formal hiring. Use the nomination workflow for senior or board-reviewed hires.

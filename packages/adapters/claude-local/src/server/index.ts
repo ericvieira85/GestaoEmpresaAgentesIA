@@ -1,4 +1,5 @@
 export { execute, runClaudeLogin } from "./execute.js";
+export { resolveContextModeBundlePath } from "./context-mode.js";
 export { listClaudeSkills, syncClaudeSkills } from "./skills.js";
 export { listClaudeModels } from "./models.js";
 export { testEnvironment } from "./test.js";
@@ -42,6 +43,7 @@ export const sessionCodec: AdapterSessionCodec = {
     const workspaceId = readNonEmptyString(record.workspaceId) ?? readNonEmptyString(record.workspace_id);
     const repoUrl = readNonEmptyString(record.repoUrl) ?? readNonEmptyString(record.repo_url);
     const repoRef = readNonEmptyString(record.repoRef) ?? readNonEmptyString(record.repo_ref);
+    const contextModeDbPath = readNonEmptyString(record.contextModeDbPath);
     return {
       sessionId,
       ...(cwd ? { cwd } : {}),
@@ -49,6 +51,7 @@ export const sessionCodec: AdapterSessionCodec = {
       ...(workspaceId ? { workspaceId } : {}),
       ...(repoUrl ? { repoUrl } : {}),
       ...(repoRef ? { repoRef } : {}),
+      ...(contextModeDbPath ? { contextModeDbPath } : {}),
     };
   },
   serialize(params: Record<string, unknown> | null) {
@@ -65,6 +68,7 @@ export const sessionCodec: AdapterSessionCodec = {
     const workspaceId = readNonEmptyString(params.workspaceId) ?? readNonEmptyString(params.workspace_id);
     const repoUrl = readNonEmptyString(params.repoUrl) ?? readNonEmptyString(params.repo_url);
     const repoRef = readNonEmptyString(params.repoRef) ?? readNonEmptyString(params.repo_ref);
+    const contextModeDbPath = readNonEmptyString(params.contextModeDbPath);
     return {
       sessionId,
       ...(cwd ? { cwd } : {}),
@@ -72,6 +76,7 @@ export const sessionCodec: AdapterSessionCodec = {
       ...(workspaceId ? { workspaceId } : {}),
       ...(repoUrl ? { repoUrl } : {}),
       ...(repoRef ? { repoRef } : {}),
+      ...(contextModeDbPath ? { contextModeDbPath } : {}),
     };
   },
   getDisplayId(params: Record<string, unknown> | null) {
