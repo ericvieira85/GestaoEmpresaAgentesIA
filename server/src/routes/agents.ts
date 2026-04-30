@@ -243,7 +243,7 @@ export function agentRoutes(
     agentId: string,
     grantedByUserId: string | null,
   ) {
-    await access.ensureMembership(companyId, "agent", agentId, "member", "active");
+    // setPrincipalPermission calls ensureMembership internally; no need to call it twice
     await access.setPrincipalPermission(
       companyId,
       "agent",
@@ -1731,43 +1731,40 @@ export function agentRoutes(
     const agent = await materializeDefaultInstructionsBundleForNewAgent(createdAgent, instructionsBundle);
 
     const actor = getActorInfo(req);
-    await logActivity(db, {
-      companyId,
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      agentId: actor.agentId,
-      runId: actor.runId,
-      action: "agent.created",
-      entityType: "agent",
-      entityId: agent.id,
-      details: {
-        name: agent.name,
-        role: agent.role,
-        desiredSkills: desiredSkillAssignment.desiredSkills,
-      },
-    });
+    const grantedByUserId = req.actor.type === "board" ? (req.actor.userId ?? null) : null;
+    await Promise.all([
+      logActivity(db, {
+        companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        runId: actor.runId,
+        action: "agent.created",
+        entityType: "agent",
+        entityId: agent.id,
+        details: {
+          name: agent.name,
+          role: agent.role,
+          desiredSkills: desiredSkillAssignment.desiredSkills,
+        },
+      }),
+      applyDefaultAgentTaskAssignGrant(companyId, agent.id, grantedByUserId),
+      agent.budgetMonthlyCents > 0
+        ? budgets.upsertPolicy(
+            companyId,
+            {
+              scopeType: "agent",
+              scopeId: agent.id,
+              amount: agent.budgetMonthlyCents,
+              windowKind: "calendar_month_utc",
+            },
+            actor.actorType === "user" ? actor.actorId : null,
+          )
+        : Promise.resolve(),
+    ]);
     const telemetryClient = getTelemetryClient();
     if (telemetryClient) {
       trackAgentCreated(telemetryClient, { agentRole: agent.role, agentId: agent.id });
-    }
-
-    await applyDefaultAgentTaskAssignGrant(
-      companyId,
-      agent.id,
-      req.actor.type === "board" ? (req.actor.userId ?? null) : null,
-    );
-
-    if (agent.budgetMonthlyCents > 0) {
-      await budgets.upsertPolicy(
-        companyId,
-        {
-          scopeType: "agent",
-          scopeId: agent.id,
-          amount: agent.budgetMonthlyCents,
-          windowKind: "calendar_month_utc",
-        },
-        actor.actorType === "user" ? actor.actorId : null,
-      );
     }
 
     res.status(201).json(agent);

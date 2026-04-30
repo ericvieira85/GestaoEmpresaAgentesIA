@@ -703,11 +703,13 @@ export function agentInstructionsService() {
       normalizeRelativeFilePath(relativePath),
       content,
     ] as const);
-    for (const [relativePath, content] of normalizedEntries) {
-      const absolutePath = resolvePathWithinRoot(rootPath, relativePath);
-      await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-      await fs.writeFile(absolutePath, content, "utf8");
-    }
+    await Promise.all(
+      normalizedEntries.map(async ([relativePath, content]) => {
+        const absolutePath = resolvePathWithinRoot(rootPath, relativePath);
+        await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+        await fs.writeFile(absolutePath, content, "utf8");
+      }),
+    );
     if (!normalizedEntries.some(([relativePath]) => relativePath === entryFile)) {
       await fs.writeFile(resolvePathWithinRoot(rootPath, entryFile), "", "utf8");
     }

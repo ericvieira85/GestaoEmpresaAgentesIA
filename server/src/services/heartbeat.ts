@@ -4921,22 +4921,21 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       : persistedWorkspaceManagedConfig;
     const configSnapshot = buildExecutionWorkspaceConfigSnapshot(mergedConfig, selectedEnvironmentId);
     const executionRunConfig = stripWorkspaceRuntimeFromExecutionRunConfig(mergedConfig);
-    const { resolvedConfig, secretKeys } = await resolveExecutionRunAdapterConfig({
-      companyId: agent.companyId,
-      executionRunConfig,
-      projectEnv: projectContext?.env ?? null,
-      secretsSvc,
-    });
-    const runScopedMentionedSkillKeys = await resolveRunScopedMentionedSkillKeys({
-      db,
-      companyId: agent.companyId,
-      issueId,
-    });
+    const [{ resolvedConfig, secretKeys }, runScopedMentionedSkillKeys, runtimeSkillEntries] =
+      await Promise.all([
+        resolveExecutionRunAdapterConfig({
+          companyId: agent.companyId,
+          executionRunConfig,
+          projectEnv: projectContext?.env ?? null,
+          secretsSvc,
+        }),
+        resolveRunScopedMentionedSkillKeys({ db, companyId: agent.companyId, issueId }),
+        companySkills.listRuntimeSkillEntries(agent.companyId),
+      ]);
     const effectiveResolvedConfig = applyRunScopedMentionedSkillKeys(
       resolvedConfig,
       runScopedMentionedSkillKeys,
     );
-    const runtimeSkillEntries = await companySkills.listRuntimeSkillEntries(agent.companyId);
     const skillSyncPreference = readPaperclipSkillSyncPreference(effectiveResolvedConfig);
     const filteredSkillEntries = skillSyncPreference.explicit
       ? runtimeSkillEntries.filter((e) => !!e.required || skillSyncPreference.desiredSkills.includes(e.key))

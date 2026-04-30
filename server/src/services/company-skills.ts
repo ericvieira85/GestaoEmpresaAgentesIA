@@ -2169,31 +2169,33 @@ export function companySkillService(db: Db) {
   ): Promise<PaperclipSkillEntry[]> {
     const skills = await listFull(companyId);
 
-    const out: PaperclipSkillEntry[] = [];
-    for (const skill of skills) {
-      const sourceKind = asString(getSkillMeta(skill).sourceKind);
-      let source = normalizeSkillDirectory(skill);
-      if (!source) {
-        source = options.materializeMissing === false
-          ? resolveRuntimeSkillMaterializedPath(companyId, skill)
-          : await materializeRuntimeSkillFiles(companyId, skill).catch(() => null);
-      }
-      if (!source) continue;
+    const entries = await Promise.all(
+      skills.map(async (skill) => {
+        const sourceKind = asString(getSkillMeta(skill).sourceKind);
+        let source = normalizeSkillDirectory(skill);
+        if (!source) {
+          source = options.materializeMissing === false
+            ? resolveRuntimeSkillMaterializedPath(companyId, skill)
+            : await materializeRuntimeSkillFiles(companyId, skill).catch(() => null);
+        }
+        if (!source) return null;
 
-      const required = sourceKind === "paperclip_bundled";
-      out.push({
-        key: skill.key,
-        runtimeName: buildSkillRuntimeName(skill.key, skill.slug),
-        source,
-        required,
-        requiredReason: required
-          ? "Bundled Paperclip skills are always available for local adapters."
-          : null,
-      });
-    }
+        const required = sourceKind === "paperclip_bundled";
+        return {
+          key: skill.key,
+          runtimeName: buildSkillRuntimeName(skill.key, skill.slug),
+          source,
+          required,
+          requiredReason: required
+            ? "Bundled Paperclip skills are always available for local adapters."
+            : null,
+        };
+      }),
+    );
 
-    out.sort((left, right) => left.key.localeCompare(right.key));
-    return out;
+    return entries
+      .filter((e): e is NonNullable<typeof e> => e !== null)
+      .sort((left, right) => left.key.localeCompare(right.key));
   }
 
   async function importPackageFiles(

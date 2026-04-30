@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, desc, eq, gte, inArray, lt, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, lt, ne, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   agents,
@@ -415,10 +415,13 @@ export function agentService(db: Db) {
         await ensureManager(companyId, data.reportsTo);
       }
 
+      // Fetch only agents whose name starts with the candidate — avoids a full table scan.
+      // Escape LIKE wildcards so literal % or _ in names are treated as plain characters.
+      const likePrefix = data.name.replace(/[%_\\]/g, "\\$&");
       const existingAgents = await db
         .select({ id: agents.id, name: agents.name, status: agents.status })
         .from(agents)
-        .where(eq(agents.companyId, companyId));
+        .where(and(eq(agents.companyId, companyId), ilike(agents.name, `${likePrefix}%`)));
       const uniqueName = deduplicateAgentName(data.name, existingAgents);
 
       const role = data.role ?? "general";
