@@ -1,28 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "@/lib/router";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
+import { useDialogActions } from "../context/DialogContext";
 import { agentsApi } from "../api/agents";
 import { companySkillsApi } from "../api/companySkills";
 import { queryKeys } from "../lib/queryKeys";
-import { AGENT_ROLES } from "@paperclipai/shared";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Shield } from "lucide-react";
-import { cn, agentUrl } from "../lib/utils";
-import { roleLabels } from "../components/agent-config-primitives";
-import { AgentConfigForm, type CreateConfigValues } from "../components/AgentConfigForm";
+import { agentUrl } from "../lib/utils";
+import { type CreateConfigValues } from "../components/AgentConfigForm";
 import { defaultCreateValues } from "../components/agent-config-defaults";
-import { getUIAdapter, listUIAdapters } from "../adapters";
-import { useDisabledAdaptersSync } from "../adapters/use-disabled-adapters";
+import { getUIAdapter } from "../adapters";
 import { isValidAdapterType } from "../adapters/metadata";
-import { ReportsToPicker } from "../components/ReportsToPicker";
 import { buildNewAgentHirePayload } from "../lib/new-agent-hire-payload";
 import {
   DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX,
@@ -30,6 +20,20 @@ import {
 } from "@paperclipai/adapter-codex-local";
 import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
 import { DEFAULT_GEMINI_LOCAL_MODEL } from "@paperclipai/adapter-gemini-local";
+import { Upload } from "lucide-react";
+import { WizardProgressBar } from "../components/new-agent-wizard/WizardProgressBar";
+import { WizardStepIdentity } from "../components/new-agent-wizard/WizardStepIdentity";
+import { WizardStepAdapter } from "../components/new-agent-wizard/WizardStepAdapter";
+import type { CompanySkillListItem } from "@paperclipai/shared";
+import { WizardStepReview } from "../components/new-agent-wizard/WizardStepReview";
+import type { AgentTemplate } from "../components/new-agent-wizard/AgentTemplates";
+import { parseAgentFile } from "../components/new-agent-wizard/agentFileParser";
+
+const WIZARD_STEPS = [
+  { label: "Identity" },
+  { label: "Adapter & Model" },
+  { label: "Skills & Review" },
+];
 
 function createValuesForAdapterType(
   adapterType: CreateConfigValues["adapterType"],
@@ -38,8 +42,7 @@ function createValuesForAdapterType(
   const nextValues: CreateConfigValues = { ...defaults, adapterType };
   if (adapterType === "codex_local") {
     nextValues.model = DEFAULT_CODEX_LOCAL_MODEL;
-    nextValues.dangerouslyBypassSandbox =
-      DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX;
+    nextValues.dangerouslyBypassSandbox = DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX;
   } else if (adapterType === "gemini_local") {
     nextValues.model = DEFAULT_GEMINI_LOCAL_MODEL;
   } else if (adapterType === "cursor") {
@@ -53,18 +56,26 @@ function createValuesForAdapterType(
 export function NewAgent() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const { openNewIssue } = useDialogActions();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const presetAdapterType = searchParams.get("adapterType");
 
+  const [step, setStep] = useState(1);
+
+  // Step 1 state
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
   const [role, setRole] = useState("general");
   const [reportsTo, setReportsTo] = useState<string | null>(null);
+  const [appliedTemplateId, setAppliedTemplateId] = useState<string | null>(null);
+
+  // Step 2 state
   const [configValues, setConfigValues] = useState<CreateConfigValues>(defaultCreateValues);
+
+  // Step 3 state
   const [selectedSkillKeys, setSelectedSkillKeys] = useState<string[]>([]);
-  const [roleOpen, setRoleOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const { data: agents } = useQuery({
@@ -102,20 +113,15 @@ export function NewAgent() {
     ]);
   }, [setBreadcrumbs]);
 
+  // Apply preset adapterType from URL
   useEffect(() => {
-    if (isFirstAgent) {
-      if (!name) setName("CEO");
-      if (!title) setTitle("CEO");
-    }
-  }, [isFirstAgent]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    const requested = presetAdapterType;
-    if (!requested) return;
-    if (!isValidAdapterType(requested)) return;
+    if (!presetAdapterType) return;
+    if (!isValidAdapterType(presetAdapterType)) return;
     setConfigValues((prev) => {
-      if (prev.adapterType === requested) return prev;
-      return createValuesForAdapterType(requested as CreateConfigValues["adapterType"]);
+      if (prev.adapterType === presetAdapterType) return prev;
+      return createValuesForAdapterType(
+        presetAdapterType as CreateConfigValues["adapterType"],
+      );
     });
   }, [presetAdapterType]);
 
@@ -132,42 +138,63 @@ export function NewAgent() {
     },
   });
 
-  function buildAdapterConfig() {
-    const adapter = getUIAdapter(configValues.adapterType);
-    return adapter.buildAdapterConfig(configValues);
+  function handleApplyTemplate(tpl: AgentTemplate) {
+    setAppliedTemplateId(tpl.id);
+    setName(tpl.name);
+    setTitle(tpl.title);
+    setRole(tpl.role);
+    setConfigValues((prev) => ({
+      ...createValuesForAdapterType(tpl.adapterType as CreateConfigValues["adapterType"]),
+      promptTemplate: tpl.promptTemplate,
+      // preserve any already-set values the user may have touched
+      ...(prev.adapterType === tpl.adapterType ? { promptTemplate: tpl.promptTemplate } : {}),
+    }));
+  }
+
+  const reportsToName =
+    agents?.find((a) => a.id === reportsTo)?.name ?? null;
+
+  const availableSkills: CompanySkillListItem[] = (companySkills ?? []).filter(
+    (s) => !s.key.startsWith("paperclipai/paperclip/"),
+  );
+
+  function toggleSkill(key: string, checked: boolean) {
+    setSelectedSkillKeys((prev) =>
+      checked ? (prev.includes(key) ? prev : [...prev, key]) : prev.filter((k) => k !== key),
+    );
+  }
+
+  function validateStep(): string | null {
+    if (step === 1 && !name.trim()) return "Agent name is required.";
+    if (step === 2 && configValues.adapterType === "opencode_local") {
+      const model = configValues.model.trim();
+      if (!model) return "OpenCode requires an explicit model in provider/model format.";
+      if (adapterModelsError)
+        return adapterModelsError instanceof Error
+          ? adapterModelsError.message
+          : "Failed to load OpenCode models.";
+      if (adapterModelsLoading || adapterModelsFetching)
+        return "OpenCode models are still loading. Please wait and try again.";
+      const discovered = adapterModels ?? [];
+      if (!discovered.some((e) => e.id === model))
+        return discovered.length === 0
+          ? "No OpenCode models discovered. Run `opencode models` and authenticate providers."
+          : `Configured OpenCode model is unavailable: ${model}`;
+    }
+    return null;
+  }
+
+  function handleNext() {
+    const err = validateStep();
+    if (err) { setFormError(err); return; }
+    setFormError(null);
+    if (step < 3) setStep((s) => s + 1);
+    else handleSubmit();
   }
 
   function handleSubmit() {
     if (!selectedCompanyId || !name.trim()) return;
-    setFormError(null);
-    if (configValues.adapterType === "opencode_local") {
-      const selectedModel = configValues.model.trim();
-      if (!selectedModel) {
-        setFormError("OpenCode requires an explicit model in provider/model format.");
-        return;
-      }
-      if (adapterModelsError) {
-        setFormError(
-          adapterModelsError instanceof Error
-            ? adapterModelsError.message
-            : "Failed to load OpenCode models.",
-        );
-        return;
-      }
-      if (adapterModelsLoading || adapterModelsFetching) {
-        setFormError("OpenCode models are still loading. Please wait and try again.");
-        return;
-      }
-      const discovered = adapterModels ?? [];
-      if (!discovered.some((entry) => entry.id === selectedModel)) {
-        setFormError(
-          discovered.length === 0
-            ? "No OpenCode models discovered. Run `opencode models` and authenticate providers."
-            : `Configured OpenCode model is unavailable: ${selectedModel}`,
-        );
-        return;
-      }
-    }
+    const adapter = getUIAdapter(configValues.adapterType);
     createAgent.mutate(
       buildNewAgentHirePayload({
         name,
@@ -176,156 +203,183 @@ export function NewAgent() {
         reportsTo,
         selectedSkillKeys,
         configValues,
-        adapterConfig: buildAdapterConfig(),
+        adapterConfig: adapter.buildAdapterConfig(configValues),
       }),
     );
   }
 
-  const availableSkills = (companySkills ?? []).filter((skill) => !skill.key.startsWith("paperclipai/paperclip/"));
-
-  function toggleSkill(key: string, checked: boolean) {
-    setSelectedSkillKeys((prev) => {
-      if (checked) {
-        return prev.includes(key) ? prev : [...prev, key];
+  // Keyboard shortcut: ⌘+Enter / Ctrl+Enter to advance
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        e.preventDefault();
+        handleNext();
       }
-      return prev.filter((value) => value !== key);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  });
+
+  const ceoAgent = (agents ?? []).find((a) => a.role === "ceo");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    const parsed = await parseAgentFile(file);
+    if (!parsed) {
+      setFormError("Could not parse file. Expected .md, .json, or .zip.");
+      return;
+    }
+    if (parsed.isZip) {
+      navigate("/company/import");
+      return;
+    }
+
+    if (parsed.name) setName(parsed.name);
+    if (parsed.title) setTitle(parsed.title);
+    if (parsed.role && !isFirstAgent) setRole(parsed.role);
+    if (parsed.reportsTo !== null) setReportsTo(parsed.reportsTo);
+    if (parsed.configValues) {
+      setConfigValues((prev) => ({
+        ...prev,
+        ...parsed.configValues,
+      }));
+    }
+    setAppliedTemplateId(null);
+    setFormError(null);
+    setStep(1);
+  }
+
+  function handleAskCeo() {
+    openNewIssue({
+      assigneeAgentId: ceoAgent?.id,
+      title: "Create a new agent",
+      description: "(describe what kind of agent you want here)",
     });
+    navigate("/issues");
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold">New Agent</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Advanced agent configuration
-        </p>
+    <div className="mx-auto max-w-2xl space-y-4">
+      {/* Page header */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-lg font-semibold">New Agent</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Manual advanced configuration</p>
+        </div>
+        <div className="flex items-center gap-3 mt-1 shrink-0">
+          <button
+            className="flex items-center gap-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
+            onClick={() => fileInputRef.current?.click()}
+            title="Import from .md, .json, or .zip"
+          >
+            <Upload className="h-3 w-3" />
+            Import from file
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".md,.mdx,.json,.zip"
+            className="hidden"
+            onChange={handleImportFile}
+          />
+          {ceoAgent && (
+            <button
+              className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
+              onClick={handleAskCeo}
+            >
+              Prefer the CEO creates it? →
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="border border-border">
-        {/* Name */}
-        <div className="px-4 pt-4 pb-2">
-          <input
-            className="w-full text-lg font-semibold bg-transparent outline-none placeholder:text-muted-foreground/50"
-            placeholder="Agent name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            autoFocus
-          />
-        </div>
-
-        {/* Title */}
-        <div className="px-4 pb-2">
-          <input
-            className="w-full bg-transparent outline-none text-sm text-muted-foreground placeholder:text-muted-foreground/40"
-            placeholder="Title (e.g. VP of Engineering)"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </div>
-
-        {/* Property chips: Role + Reports To */}
-        <div className="flex items-center gap-1.5 px-4 py-2 border-t border-border flex-wrap">
-          <Popover open={roleOpen} onOpenChange={setRoleOpen}>
-            <PopoverTrigger asChild>
-              <button
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors",
-                  isFirstAgent && "opacity-60 cursor-not-allowed"
-                )}
-                disabled={isFirstAgent}
-              >
-                <Shield className="h-3 w-3 text-muted-foreground" />
-                {roleLabels[effectiveRole] ?? effectiveRole}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-36 p-1" align="start">
-              {AGENT_ROLES.map((r) => (
-                <button
-                  key={r}
-                  className={cn(
-                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
-                    r === role && "bg-accent"
-                  )}
-                  onClick={() => { setRole(r); setRoleOpen(false); }}
-                >
-                  {roleLabels[r] ?? r}
-                </button>
-              ))}
-            </PopoverContent>
-          </Popover>
-
-          <ReportsToPicker
-            agents={agents ?? []}
-            value={reportsTo}
-            onChange={setReportsTo}
-            disabled={isFirstAgent}
-          />
-        </div>
-
-        {/* Shared config form */}
-        <AgentConfigForm
-          mode="create"
-          values={configValues}
-          onChange={(patch) => setConfigValues((prev) => ({ ...prev, ...patch }))}
-          adapterModels={adapterModels}
+      {/* Wizard card */}
+      <div className="border border-border rounded-lg overflow-hidden">
+        <WizardProgressBar
+          steps={WIZARD_STEPS}
+          current={step}
+          onGoTo={setStep}
         />
 
-        <div className="border-t border-border px-4 py-4">
-          <div className="space-y-3">
-            <div>
-              <h2 className="text-sm font-medium">Company skills</h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Optional skills from the company library. Built-in Paperclip runtime skills are added automatically.
-              </p>
-            </div>
-            {availableSkills.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                No optional company skills installed yet.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {availableSkills.map((skill) => {
-                  const inputId = `skill-${skill.id}`;
-                  const checked = selectedSkillKeys.includes(skill.key);
-                  return (
-                    <div key={skill.id} className="flex items-start gap-3">
-                      <Checkbox
-                        id={inputId}
-                        checked={checked}
-                        onCheckedChange={(next) => toggleSkill(skill.key, next === true)}
-                      />
-                      <label htmlFor={inputId} className="grid gap-1 leading-none">
-                        <span className="text-sm font-medium">{skill.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {skill.description ?? skill.key}
-                        </span>
-                      </label>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+        <div className="p-6">
+          {step === 1 && (
+            <WizardStepIdentity
+              agents={agents ?? []}
+              isFirstAgent={isFirstAgent}
+              name={name}
+              title={title}
+              role={effectiveRole}
+              reportsTo={reportsTo}
+              onName={setName}
+              onTitle={setTitle}
+              onRole={setRole}
+              onReportsTo={setReportsTo}
+              onTemplateApply={handleApplyTemplate}
+              appliedTemplateId={appliedTemplateId}
+            />
+          )}
+
+          {step === 2 && (
+            <WizardStepAdapter
+              configValues={configValues}
+              adapterModels={adapterModels}
+              adapterModelsLoading={adapterModelsLoading}
+              onChange={(patch) => setConfigValues((prev) => ({ ...prev, ...patch }))}
+            />
+          )}
+
+          {step === 3 && (
+            <WizardStepReview
+              name={name}
+              title={title}
+              effectiveRole={effectiveRole}
+              reportsToName={reportsToName}
+              configValues={configValues}
+              availableSkills={availableSkills}
+              selectedSkillKeys={selectedSkillKeys}
+              onToggleSkill={toggleSkill}
+              formError={formError}
+              isFirstAgent={isFirstAgent}
+            />
+          )}
         </div>
 
         {/* Footer */}
-        <div className="border-t border-border px-4 py-3">
-          {isFirstAgent && (
-            <p className="text-xs text-muted-foreground mb-2">This will be the CEO</p>
-          )}
-          {formError && (
-            <p className="text-xs text-destructive mb-2">{formError}</p>
-          )}
-          <div className="flex items-center justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigate("/agents")}>
+        <div className="flex items-center justify-between px-6 py-3 border-t border-border bg-muted/30">
+          <span className="text-[11px] text-muted-foreground">
+            {step < 3 ? "⌘+Enter to continue" : "⌘+Enter to create"}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate("/agents")}
+            >
               Cancel
             </Button>
+            {step > 1 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setFormError(null); setStep((s) => s - 1); }}
+              >
+                ← Back
+              </Button>
+            )}
             <Button
               size="sm"
               disabled={!name.trim() || createAgent.isPending}
-              onClick={handleSubmit}
+              onClick={handleNext}
             >
-              {createAgent.isPending ? "Creating…" : "Create agent"}
+              {step < 3
+                ? "Continue →"
+                : createAgent.isPending
+                  ? "Creating…"
+                  : "Create agent"}
             </Button>
           </div>
         </div>

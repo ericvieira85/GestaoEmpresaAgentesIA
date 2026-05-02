@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>/agents/new — Wizard Mockup</title>
+<style>
+  :root {
+    --bg: #0b0d10;
+    --surface: #111418;
+    --surface-2: #161a1f;
+    --border: #232830;
+    --border-strong: #2e343d;
+    --text: #e6e8eb;
+    --text-muted: #8b929c;
+    --text-dim: #5d6470;
+    --accent: #5b8cff;
+    --accent-hover: #7aa1ff;
+    --success: #3ecf8e;
+    --warn: #f5a524;
+    --danger: #f87171;
+    --radius: 6px;
+    --radius-lg: 10px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+  body { display: flex; min-height: 100vh; flex-direction: column; align-items: center; padding: 32px 16px 64px; }
+
+  .toolbar {
+    display: flex; gap: 8px; margin-bottom: 24px; align-items: center;
+    background: var(--surface); padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg);
+  }
+  .toolbar span { font-size: 12px; color: var(--text-muted); }
+  .toolbar button {
+    background: transparent; color: var(--text-muted); border: 1px solid var(--border);
+    padding: 4px 10px; border-radius: var(--radius); font-size: 12px; cursor: pointer;
+  }
+  .toolbar button.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .toolbar button:hover:not(.active) { color: var(--text); border-color: var(--border-strong); }
+
+  .wizard {
+    width: 100%; max-width: 720px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+
+  /* Header */
+  .wizard-header { padding: 20px 24px 16px; border-bottom: 1px solid var(--border); }
+  .wizard-title { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  .wizard-subtitle { font-size: 13px; color: var(--text-muted); margin: 0; }
+
+  /* Progress */
+  .progress { display: flex; align-items: center; gap: 8px; padding: 16px 24px; border-bottom: 1px solid var(--border); }
+  .progress-step { display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; }
+  .progress-dot {
+    width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+    border: 1px solid var(--border-strong); background: var(--surface-2); font-size: 12px; font-weight: 600;
+    color: var(--text-muted); transition: all 0.15s;
+  }
+  .progress-step.active .progress-dot { background: var(--accent); border-color: var(--accent); color: white; }
+  .progress-step.done .progress-dot { background: var(--success); border-color: var(--success); color: #0b0d10; }
+  .progress-label { font-size: 12px; color: var(--text-muted); }
+  .progress-step.active .progress-label, .progress-step.done .progress-label { color: var(--text); }
+  .progress-bar { flex: 1; height: 1px; background: var(--border-strong); }
+
+  /* Body */
+  .wizard-body { padding: 24px; min-height: 360px; }
+  .step { display: none; animation: fadeIn 0.2s ease; }
+  .step.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  .field { margin-bottom: 16px; }
+  .field-label { display: block; font-size: 12px; font-weight: 500; margin-bottom: 6px; color: var(--text-muted); }
+  .field-help { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  input[type=text], select {
+    width: 100%; padding: 8px 10px; background: var(--surface-2); border: 1px solid var(--border-strong);
+    border-radius: var(--radius); color: var(--text); font-size: 13px; outline: none;
+  }
+  input[type=text]:focus, select:focus { border-color: var(--accent); }
+
+  /* Templates */
+  .template-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 20px; }
+  .template-card {
+    border: 1px solid var(--border-strong); padding: 12px; border-radius: var(--radius);
+    background: var(--surface-2); cursor: pointer; transition: all 0.15s;
+  }
+  .template-card:hover { border-color: var(--accent); }
+  .template-card.selected { border-color: var(--accent); background: rgba(91, 140, 255, 0.08); }
+  .template-card-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .template-card-desc { font-size: 11px; color: var(--text-muted); }
+  .template-icon { font-size: 18px; margin-bottom: 6px; }
+
+  /* Adapter cards */
+  .adapter-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .adapter-card {
+    border: 1px solid var(--border-strong); padding: 16px 12px; border-radius: var(--radius);
+    background: var(--surface-2); cursor: pointer; transition: all 0.15s; text-align: center;
+  }
+  .adapter-card:hover { border-color: var(--accent); }
+  .adapter-card.selected { border-color: var(--accent); background: rgba(91, 140, 255, 0.08); }
+  .adapter-card-icon { font-size: 22px; margin-bottom: 8px; }
+  .adapter-card-name { font-size: 13px; font-weight: 600; }
+  .adapter-card-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  /* Skills */
+  .skill-row {
+    display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px;
+    border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 6px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .skill-row:hover { border-color: var(--border-strong); }
+  .skill-row.checked { border-color: var(--accent); background: rgba(91, 140, 255, 0.06); }
+  .skill-row input { margin-top: 3px; }
+  .skill-name { font-size: 13px; font-weight: 500; }
+  .skill-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  /* Review card */
+  .review-card {
+    background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+    padding: 18px; margin-bottom: 16px;
+  }
+  .review-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+  .review-row:last-child { border-bottom: none; }
+  .review-key { color: var(--text-muted); }
+  .review-value { color: var(--text); font-weight: 500; }
+  .cost-highlight { background: linear-gradient(135deg, rgba(62, 207, 142, 0.12), rgba(91, 140, 255, 0.08));
+    border: 1px solid rgba(62, 207, 142, 0.3); padding: 12px 14px; border-radius: var(--radius);
+    display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+  .cost-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .cost-value { font-size: 20px; font-weight: 600; color: var(--success); }
+
+  /* Footer */
+  .wizard-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .footer-hint { font-size: 11px; color: var(--text-dim); }
+  .footer-actions { display: flex; gap: 8px; }
+  .btn {
+    padding: 8px 16px; border-radius: var(--radius); font-size: 13px; font-weight: 500;
+    cursor: pointer; border: 1px solid var(--border-strong); background: var(--surface-2);
+    color: var(--text); transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
+  .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .btn-ghost { background: transparent; border-color: transparent; color: var(--text-muted); }
+  .btn-ghost:hover { color: var(--text); border-color: transparent; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Property chips */
+  .chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    padding: 4px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius);
+    background: var(--surface-2); font-size: 12px; cursor: pointer; transition: all 0.15s;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip.selected { border-color: var(--accent); background: rgba(91, 140, 255, 0.08); color: var(--accent-hover); }
+
+  /* Status pill (model availability) */
+  .status-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 2px 8px; border-radius: 999px; margin-left: 8px; }
+  .status-pill.ok { background: rgba(62, 207, 142, 0.15); color: var(--success); }
+  .status-pill.checking { background: rgba(245, 165, 36, 0.15); color: var(--warn); }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <span>Step:</span>
+  <button class="active" data-goto="1">1 — Identidade</button>
+  <button data-goto="2">2 — Adapter & Model</button>
+  <button data-goto="3">3 — Skills & Confirmação</button>
+</div>
+
+<div class="wizard">
+  <div class="wizard-header">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+      <h1 class="wizard-title" style="margin:0">Novo Agente</h1>
+      <a href="#" onclick="return false;" style="font-size:12px; color:var(--text-muted); text-decoration:underline; text-underline-offset:2px;" title="Cria uma issue atribuída ao CEO com instrução de contratar o agente">
+        Prefere que o CEO crie? →
+      </a>
+    </div>
+    <p class="wizard-subtitle">Configuração manual avançada · rota <code style="font-size:11px; background:var(--surface-2); padding:1px 5px; border-radius:3px; border:1px solid var(--border)">/agents/new</code></p>
+  </div>
+
+  <div class="progress">
+    <div class="progress-step active" data-step="1">
+      <div class="progress-dot">1</div>
+      <span class="progress-label">Identidade</span>
+    </div>
+    <div class="progress-bar"></div>
+    <div class="progress-step" data-step="2">
+      <div class="progress-dot">2</div>
+      <span class="progress-label">Adapter & Model</span>
+    </div>
+    <div class="progress-bar"></div>
+    <div class="progress-step" data-step="3">
+      <div class="progress-dot">3</div>
+      <span class="progress-label">Skills & Revisão</span>
+    </div>
+  </div>
+
+  <div class="wizard-body">
+
+    <!-- STEP 1 -->
+    <div class="step active" id="step-1">
+      <div class="field">
+        <label class="field-label">Começar com um template</label>
+        <div class="template-grid">
+          <div class="template-card selected" data-template="ceo">
+            <div class="template-icon">👔</div>
+            <div class="template-card-title">CEO</div>
+            <div class="template-card-desc">Define direção, delega, contrata</div>
+          </div>
+          <div class="template-card" data-template="eng">
+            <div class="template-icon">⚙️</div>
+            <div class="template-card-title">Engenheiro</div>
+            <div class="template-card-desc">Implementa, revisa código, testa</div>
+          </div>
+          <div class="template-card" data-template="pm">
+            <div class="template-icon">📋</div>
+            <div class="template-card-title">Product Manager</div>
+            <div class="template-card-desc">Prioriza, define escopo, reporta</div>
+          </div>
+          <div class="template-card" data-template="designer">
+            <div class="template-icon">🎨</div>
+            <div class="template-card-title">Designer</div>
+            <div class="template-card-desc">UX/UI, mockups, design system</div>
+          </div>
+        </div>
+        <div class="field-help">Pré-popula nome, role e prompts. Você pode editar tudo depois.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Nome</label>
+        <input type="text" id="agent-name" value="Alice" placeholder="Ex: Alice, João, Bot-01" />
+      </div>
+
+      <div class="field">
+        <label class="field-label">Cargo (opcional)</label>
+        <input type="text" id="agent-title" value="CEO" placeholder="Ex: VP de Engenharia, Tech Lead" />
+      </div>
+
+      <div class="field">
+        <label class="field-label">Role no sistema</label>
+        <div class="chip-row">
+          <span class="chip selected">CEO</span>
+          <span class="chip">Engineer</span>
+          <span class="chip">Manager</span>
+          <span class="chip">PM</span>
+          <span class="chip">Designer</span>
+          <span class="chip">QA</span>
+          <span class="chip">DevOps</span>
+          <span class="chip">Security</span>
+          <span class="chip">General</span>
+        </div>
+        <div class="field-help">⚠️ Como este é o primeiro agente, ele será o CEO.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Reporta para</label>
+        <select disabled>
+          <option>— Nenhum (CEO reporta ao Board)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- STEP 2 -->
+    <div class="step" id="step-2">
+      <div class="field">
+        <label class="field-label">Adapter (motor do agente)</label>
+        <div class="adapter-grid">
+          <div class="adapter-card selected" data-adapter="claude">
+            <div class="adapter-card-icon">🤖</div>
+            <div class="adapter-card-name">Claude</div>
+            <div class="adapter-card-meta">claude_local</div>
+          </div>
+          <div class="adapter-card" data-adapter="codex">
+            <div class="adapter-card-icon">📝</div>
+            <div class="adapter-card-name">Codex</div>
+            <div class="adapter-card-meta">codex_local</div>
+          </div>
+          <div class="adapter-card" data-adapter="cursor">
+            <div class="adapter-card-icon">⚡</div>
+            <div class="adapter-card-name">Cursor</div>
+            <div class="adapter-card-meta">cursor</div>
+          </div>
+          <div class="adapter-card" data-adapter="gemini">
+            <div class="adapter-card-icon">💎</div>
+            <div class="adapter-card-name">Gemini</div>
+            <div class="adapter-card-meta">gemini_local</div>
+          </div>
+          <div class="adapter-card" data-adapter="opencode">
+            <div class="adapter-card-icon">🔓</div>
+            <div class="adapter-card-name">OpenCode</div>
+            <div class="adapter-card-meta">opencode_local</div>
+          </div>
+          <div class="adapter-card" data-adapter="hermes">
+            <div class="adapter-card-icon">🌀</div>
+            <div class="adapter-card-name">Hermes</div>
+            <div class="adapter-card-meta">hermes_local</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">
+          Modelo
+          <span class="status-pill ok">✓ disponível</span>
+        </label>
+        <select id="agent-model">
+          <option>claude-opus-4-7 (mais capaz, mais caro)</option>
+          <option>claude-sonnet-4-6 (equilibrado)</option>
+          <option>claude-haiku-4-5 (rápido, barato)</option>
+        </select>
+        <div class="field-help">Validação ao vivo: o modelo está disponível na sua conta.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Configuração avançada</label>
+        <div class="chip-row">
+          <span class="chip">+ Variáveis de ambiente</span>
+          <span class="chip">+ Working directory</span>
+          <span class="chip">+ Limite de runs simultâneos</span>
+        </div>
+        <div class="field-help">Opcional. Você pode configurar depois em Agent Settings.</div>
+      </div>
+    </div>
+
+    <!-- STEP 3 -->
+    <div class="step" id="step-3">
+      <div class="field">
+        <label class="field-label">Skills (opcionais)</label>
+        <div>
+          <label class="skill-row checked">
+            <input type="checkbox" checked />
+            <div>
+              <div class="skill-name">Code Review</div>
+              <div class="skill-desc">Revisa PRs com foco em qualidade e segurança</div>
+            </div>
+          </label>
+          <label class="skill-row">
+            <input type="checkbox" />
+            <div>
+              <div class="skill-name">Web Search</div>
+              <div class="skill-desc">Pesquisa na web e indexa resultados</div>
+            </div>
+          </label>
+          <label class="skill-row">
+            <input type="checkbox" />
+            <div>
+              <div class="skill-name">Database Query</div>
+              <div class="skill-desc">Consulta o PostgreSQL da empresa</div>
+            </div>
+          </label>
+        </div>
+        <div class="field-help">Skills built-in do Paperclip são adicionadas automaticamente.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Revisão</label>
+        <div class="review-card">
+          <div class="review-row"><span class="review-key">Nome</span><span class="review-value">Alice</span></div>
+          <div class="review-row"><span class="review-key">Cargo</span><span class="review-value">CEO</span></div>
+          <div class="review-row"><span class="review-key">Role</span><span class="review-value">CEO</span></div>
+          <div class="review-row"><span class="review-key">Reporta para</span><span class="review-value">— (Board)</span></div>
+          <div class="review-row"><span class="review-key">Adapter</span><span class="review-value">Claude</span></div>
+          <div class="review-row"><span class="review-key">Modelo</span><span class="review-value">claude-opus-4-7</span></div>
+          <div class="review-row"><span class="review-key">Skills</span><span class="review-value">1 selecionada</span></div>
+        </div>
+
+        <div class="cost-highlight">
+          <div>
+            <div class="cost-label">Custo estimado / mês</div>
+            <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">≈ 8h/dia, 22 dias úteis, uso médio</div>
+          </div>
+          <div class="cost-value">~ $42</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="wizard-footer">
+    <span class="footer-hint">⌘+Enter para avançar · Esc para cancelar</span>
+    <div class="footer-actions">
+      <button class="btn btn-ghost" id="btn-cancel">Cancelar</button>
+      <button class="btn" id="btn-back" style="display:none">← Voltar</button>
+      <button class="btn btn-primary" id="btn-next">Continuar →</button>
+    </div>
+  </div>
+</div>
+
+<p style="color: var(--text-dim); font-size: 11px; margin-top: 24px; max-width: 720px; text-align: center;">
+  Mockup estático — não é React. Use os botões acima ou o rodapé para navegar entre os 3 steps.
+  Compare com o atual em <code>ui/src/pages/NewAgent.tsx</code>.
+</p>
+
+<script>
+  const steps = document.querySelectorAll('.step');
+  const dots = document.querySelectorAll('.progress-step');
+  const toolbarBtns = document.querySelectorAll('.toolbar button');
+  const btnNext = document.getElementById('btn-next');
+  const btnBack = document.getElementById('btn-back');
+  const btnCancel = document.getElementById('btn-cancel');
+  let current = 1;
+
+  function goto(n) {
+    current = n;
+    steps.forEach(s => s.classList.toggle('active', s.id === `step-${n}`));
+    dots.forEach((d, i) => {
+      d.classList.toggle('active', i + 1 === n);
+      d.classList.toggle('done', i + 1 < n);
+    });
+    toolbarBtns.forEach((b, i) => b.classList.toggle('active', i + 1 === n));
+    btnBack.style.display = n === 1 ? 'none' : '';
+    btnNext.textContent = n === 3 ? 'Criar agente ✓' : 'Continuar →';
+  }
+
+  toolbarBtns.forEach(b => b.addEventListener('click', () => goto(+b.dataset.goto)));
+  dots.forEach(d => d.addEventListener('click', () => goto(+d.dataset.step)));
+  btnNext.addEventListener('click', () => {
+    if (current < 3) goto(current + 1);
+    else alert('Agente "Alice" criado! (mock)');
+  });
+  btnBack.addEventListener('click', () => goto(Math.max(1, current - 1)));
+  btnCancel.addEventListener('click', () => alert('Cancelado (mock).'));
+
+  // Template selection
+  document.querySelectorAll('.template-card').forEach(c => {
+    c.addEventListener('click', () => {
+      document.querySelectorAll('.template-card').forEach(x => x.classList.remove('selected'));
+      c.classList.add('selected');
+    });
+  });
+
+  // Adapter selection
+  document.querySelectorAll('.adapter-card').forEach(c => {
+    c.addEventListener('click', () => {
+      document.querySelectorAll('.adapter-card').forEach(x => x.classList.remove('selected'));
+      c.classList.add('selected');
+    });
+  });
+
+  // Skill toggle
+  document.querySelectorAll('.skill-row').forEach(r => {
+    r.addEventListener('click', (e) => {
+      if (e.target.tagName !== 'INPUT') {
+        const cb = r.querySelector('input');
+        cb.checked = !cb.checked;
+      }
+      r.classList.toggle('checked', r.querySelector('input').checked);
+    });
+  });
+
+  // Keyboard
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); btnNext.click(); }
+    if (e.key === 'Escape') btnCancel.click();
+  });
+</script>
+
+</body>
+</html>
