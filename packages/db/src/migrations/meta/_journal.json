@@ -533,6 +533,13 @@
       "when": 1777470000000,
       "tag": "0075_agent_nominations",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1777572332006,
+      "tag": "0076_cultured_sebastian_shaw",
+      "breakpoints": true
     }
   ]
 }
