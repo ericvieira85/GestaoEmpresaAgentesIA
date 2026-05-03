@@ -2873,6 +2873,10 @@ export function accessRoutes(
         {
           name: "paperclip-converting-plans-to-tasks",
           path: "/api/skills/paperclip-converting-plans-to-tasks"
+        },
+        {
+          name: "code-review",
+          path: "/api/skills/code-review"
         }
       ]
     });
