@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "@/lib/router";
 import { useCompany } from "../context/CompanyContext";
@@ -7,6 +7,7 @@ import { useDialogActions } from "../context/DialogContext";
 import { agentsApi } from "../api/agents";
 import { companySkillsApi } from "../api/companySkills";
 import { queryKeys } from "../lib/queryKeys";
+import { type AdapterEnvironmentTestResult } from "@paperclipai/shared";
 import { Button } from "@/components/ui/button";
 import { agentUrl } from "../lib/utils";
 import { type CreateConfigValues } from "../components/AgentConfigForm";
@@ -77,6 +78,15 @@ export function NewAgent() {
   // Step 3 state
   const [selectedSkillKeys, setSelectedSkillKeys] = useState<string[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
+  const [testAgentAction, setTestAgentAction] = useState<(() => void) | null>(null);
+  const [testAgentState, setTestAgentState] = useState({ disabled: true, pending: false });
+  const [testAgentFeedback, setTestAgentFeedback] = useState<{
+    errorMessage: string | null;
+    result: AdapterEnvironmentTestResult | null;
+  }>({
+    errorMessage: null,
+    result: null,
+  });
 
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
@@ -261,6 +271,21 @@ export function NewAgent() {
     });
     navigate("/issues");
   }
+
+  const handleTestAgentActionChange = useCallback((fn: (() => void) | null) => {
+    setTestAgentAction(() => fn);
+  }, []);
+
+  const handleTestAgentStateChange = useCallback((state: { disabled: boolean; pending: boolean }) => {
+    setTestAgentState(state);
+  }, []);
+
+  const handleTestAgentFeedbackChange = useCallback((feedback: {
+    errorMessage: string | null;
+    result: AdapterEnvironmentTestResult | null;
+  }) => {
+    setTestAgentFeedback(feedback);
+  }, []);
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">

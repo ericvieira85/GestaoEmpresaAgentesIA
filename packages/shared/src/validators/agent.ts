@@ -53,6 +53,18 @@ export const createAgentInstructionsBundleSchema = z.object({
   }),
 });
 
+const agentModelProfileConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  label: z.string().trim().min(1).optional(),
+  adapterConfig: adapterConfigSchema,
+}).strict();
+
+export const agentRuntimeConfigSchema = z.object({
+  modelProfiles: z.object({
+    cheap: agentModelProfileConfigSchema.optional(),
+  }).strict().optional(),
+}).catchall(z.unknown());
+
 export const createAgentSchema = z.object({
   name: z.string().min(1),
   role: z.enum(AGENT_ROLES).optional().default("general"),
@@ -64,7 +76,7 @@ export const createAgentSchema = z.object({
   adapterType: agentAdapterTypeSchema,
   adapterConfig: adapterConfigSchema.optional().default({}),
   instructionsBundle: createAgentInstructionsBundleSchema.optional(),
-  runtimeConfig: z.record(z.unknown()).optional().default({}),
+  runtimeConfig: agentRuntimeConfigSchema.optional().default({}),
   defaultEnvironmentId: z.string().uuid().optional().nullable(),
   budgetMonthlyCents: z.number().int().nonnegative().optional().default(0),
   permissions: agentPermissionsSchema.optional(),
@@ -134,6 +146,13 @@ export type ResetAgentSession = z.infer<typeof resetAgentSessionSchema>;
 
 export const testAdapterEnvironmentSchema = z.object({
   adapterConfig: adapterConfigSchema.optional().default({}),
+  /**
+   * Optional environment to run the adapter test inside. When omitted, the
+   * test runs against the local Paperclip host. When provided and the
+   * environment is non-local (SSH/sandbox), the test probes are executed
+   * inside that environment so the result reflects real agent execution.
+   */
+  environmentId: z.string().uuid().optional().nullable(),
 });
 
 export type TestAdapterEnvironment = z.infer<typeof testAdapterEnvironmentSchema>;
