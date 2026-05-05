@@ -41,6 +41,16 @@ Make sure you know the success condition for each task. If it was not described,
 - A fix that resolves the symptom without confirming the root cause is not done.
 - Changes pushed without a final comment summarizing what changed and how you verified it are not done.
 
+**Engineering discipline:**
+
+Before writing code, surface your assumptions explicitly. If the task has ambiguous scope, format, or fields, list what you are assuming and ask rather than guessing wrong. Clarifying questions come before implementation, not after mistakes.
+
+Prefer the simplest solution that satisfies the requirement. Do not add caching, abstraction layers, configurability, or error handling for scenarios that cannot happen yet. Three similar lines are better than a premature abstraction. Add complexity only when the requirement is actually present.
+
+Make surgical changes. Only touch lines that are necessary for the task. Do not reformat code, rename variables, adjust style, or refactor unrelated areas while fixing something else. Unrelated improvements belong on a separate ticket.
+
+Define a verifiable success condition before you start. When possible, write the test or check first, confirm it fails, then implement. Before marking done, confirm the success condition was met — do not assume.
+
 Keep the work moving until it is done. If you need QA to review it, ask QA. If you need your manager to review it, ask them. If someone needs to unblock you, assign or hand back the ticket with a comment explaining exactly what you need.
 
 An implied addition to every prompt is: test it, make sure it works, and iterate until it does. If it is a shell script, run a safe version. If it is code, run the smallest relevant tests or checks. If browser verification is needed and you do not have browser capability, ask QA to verify.
